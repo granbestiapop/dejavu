@@ -17,6 +17,9 @@ from dejavu.config.settings import (DEFAULT_FS, DEFAULT_OVERLAP_RATIO,
                                     OFFSET_SECS, SONG_ID, SONG_NAME, TOPN)
 from dejavu.logic.fingerprint import fingerprint
 
+# Repositories
+from dejavu.repositories.pyarrow_hash_repository import ParquetHashRepository
+
 
 class Dejavu:
     def __init__(self, config):
@@ -26,6 +29,10 @@ class Dejavu:
         db_cls = get_database(config.get("database_type", "mysql").lower())
 
         self.db = db_cls(**config.get("database", {}))
+
+        # Repositories
+        self.hash_repository = ParquetHashRepository()
+        
         self.db.setup()
 
         # if we should limit seconds fingerprinted,
@@ -110,7 +117,8 @@ class Dejavu:
                 traceback.print_exc(file=sys.stdout)
             else:
                 sid = self.db.insert_song(song_name, file_hash, len(hashes))
-
+                ## Move to parquet
+                self.hash_repository.insert_hashes(sid, hashes)
                 self.db.insert_hashes(sid, hashes)
                 self.db.set_song_fingerprinted(sid)
                 self.__load_fingerprinted_audio_hashes()
@@ -167,7 +175,11 @@ class Dejavu:
 
         """
         t = time()
-        matches, dedup_hashes = self.db.return_matches(hashes)
+        matches, dedup_hashes = self.hash_repository.return_matches(hashes)
+        #matches, dedup_hashes = self.db.return_matches(hashes)
+        s1 = str(len(list(matches)))
+        print("total:" + s1)
+
         query_time = time() - t
 
         return matches, dedup_hashes, query_time
